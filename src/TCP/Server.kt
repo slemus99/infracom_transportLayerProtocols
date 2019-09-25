@@ -72,7 +72,7 @@ fun main(args: Array<String>) {
 
         // accept method blocks the current method until it accepts a client
         val clientSocket = serverSocket.accept()
-        
+
         numThreads ++
     }
 
