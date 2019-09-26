@@ -86,6 +86,7 @@ data class Server(val clientSocket: Socket, val id: Int): Thread(){
             if (fileName in filesNames){
                 return fileName
             }else{
+                pw.println(Protocol.ERR.msg)
                 return Protocol.ERR.msg
             }
         }
@@ -99,6 +100,8 @@ data class Server(val clientSocket: Socket, val id: Int): Thread(){
      */
     private fun send(file: File, bis: BufferedInputStream, bos: BufferedOutputStream){
 
+
+        println("The file selected by the client is: ${file.name}")
 
         // Transform File contents into byte array
         val fileLength = file.length()
