@@ -122,7 +122,6 @@ data class Client(val port: Int, val server: String){
         while (contents[0] != 1.toByte()){
             bos.write(contents, 1, curr - 1)
             curr = ins.read(contents)
-            println(curr)
         }
         bos.write(contents, 1, curr - 1)
 

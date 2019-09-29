@@ -168,7 +168,6 @@ data class Server(val clientSocket: Socket, val id: Int): Thread(){
         var endOfFile = false
 
         while (curr != fileLength){
-            println(curr)
             var size = 10000
             if (fileLength - curr >= size) curr += size
             else{
@@ -186,7 +185,7 @@ data class Server(val clientSocket: Socket, val id: Int): Thread(){
             }
             bos.write(toSend)
 
-            //println("Process ${(curr*100.0/fileLength)}% complete")
+            println("Process ${(curr*100.0/fileLength)}% complete")
         }
 
         val after = System.currentTimeMillis()
