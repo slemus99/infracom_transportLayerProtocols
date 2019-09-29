@@ -1,6 +1,5 @@
-package TCP.Client
+package Client
 
-import TCP.Server.Hashing
 import java.io.*
 import java.net.Socket
 import java.security.MessageDigest
@@ -23,7 +22,6 @@ enum class Protocol(val msg: String){
     OK("OK")
 }
 
-val filesPath = "./src/TCP/Client/data"
 
 /**
  * Based on an implementation of https://www.javacodemonk.com/calculating-md5-hash-in-java-kotlin-and-android-96ed9628
@@ -38,12 +36,9 @@ data class Hashing(val algorithm: String){
     }
 }
 
-data class Client(val port: Int, val server: String){
+data class Client(val port: Int, val server: String, val destination: String, val fileSelectorFun: () -> Int){
 
     val socket = Socket(server, port)
-
-    // Form Standard Input
-    val stdIn = BufferedReader(InputStreamReader(System.`in`))
 
     fun clientProcess(){
         var result = requestFile()
@@ -78,9 +73,9 @@ data class Client(val port: Int, val server: String){
             val fns = serverReadyMsg[1].split(";")
             val fss = serverSizesMsg[1].split(";")
             showFilesFromConsole(fns, fss)
-            val fileId = selectFileFromConsole()
+            val fileId = fileSelectorFun()
 
-            val bos = BufferedOutputStream(FileOutputStream("$filesPath/${fns[fileId - 1]}"))
+            val bos = BufferedOutputStream(FileOutputStream("$destination/${fns[fileId - 1]}"))
 
             pw.println("${Protocol.SEND.msg} $fileId")
 
@@ -93,7 +88,7 @@ data class Client(val port: Int, val server: String){
 
 
             // Verifies the hash
-            val fileBytes = File("$filesPath/${fns[fileId - 1]}").readBytes()
+            val fileBytes = File("$destination/${fns[fileId - 1]}").readBytes()
             val calculatedHash = Hashing("MD5").hashInput(fileBytes)
 
             if (calculatedHash == hash){
@@ -136,14 +131,13 @@ data class Client(val port: Int, val server: String){
             println("${i+1}) File Name: ${filesNames[i]} | File Size: ${filesSizes[i]}")
         }
     }
-
-    private fun selectFileFromConsole(): Int{
-        println("Select one of the above files typing its number (id): ")
-        return stdIn.readLine().toInt()
-    }
 }
 
-fun main(args: Array<String>) {
-    val c = Client(3400, "localhost")
+fun run(path: String, fileSelectorFun: () -> Int) {
+    val c = Client(3400, "localhost", path, fileSelectorFun)
     c.requestFile()
+}
+
+fun main() {
+    run("./src/main/kotlin/Client/data") { 2 }
 }
