@@ -77,6 +77,8 @@ class ClientConversation(val socket: Socket): Runnable {
         val bisFile = BufferedInputStream(FileInputStream(file))
         sendFile(file, bisFile, bos)
 
+        
+        socket.close()
         // Waits for confirmation from the client
         val integriyCheck = br.readLine()
         println("Integrity check: $integriyCheck")
