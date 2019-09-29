@@ -20,7 +20,7 @@ class Server(val executorService: ExecutorService) {
 }
 
 fun run() {
-    val executorService = Executors.newFixedThreadPool(10)
+    val executorService = Executors.newFixedThreadPool(25)
     val server = Server(executorService)
     server.run()
 }

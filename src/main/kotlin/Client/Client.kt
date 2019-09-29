@@ -134,7 +134,7 @@ data class Client(val port: Int, val server: String, val destination: String, va
 }
 
 fun run(path: String, fileSelectorFun: () -> Int) {
-    val c = Client(3400, "localhost", path, fileSelectorFun)
+    val c = Client(3400, "ec2-3-85-192-235.compute-1.amazonaws.com", path, fileSelectorFun)
     c.requestFile()
 }
 
