@@ -1,7 +1,7 @@
 package UServer
 
 import java.io.*
-import java.net.Socket
+import java.net.*
 import java.security.MessageDigest
 import javax.xml.bind.DatatypeConverter
 
@@ -10,6 +10,7 @@ import javax.xml.bind.DatatypeConverter
  * SIZES: Message that the server sends containing the sizes of the available files in bytes (format: "SIZES <file_1_size>;<file_2_size>;...;<file_n_size>")
  * HASH: Message that contains the hash of the file for integrity check (format: "HASH <file_hash>")
  * SEND: signals the server to SEND a file (format: "SEND <file_id>")
+ * NUM: notifies the client how many packages are to be sent (format: "NUM <num_packages_to_send")
  * ERR: an error in the process or an unexpected message in the protocol
  * OK: Confirmation message
  */
@@ -18,6 +19,7 @@ enum class Protocol(val msg: String){
     SIZES( "SIZES"),
     HASH("HASH"),
     SEND("SEND"),
+    NUM("NUM"),
     ERR("ERROR"),
     OK("OK")
 }
@@ -34,12 +36,9 @@ data class Hashing(val algorithm: String){
     }
 }
 /**
- * Based on implementations from
- * http://www.codebytes.in/2014/11/file-transfer-using-tcp-java.html
- * https://stackoverflow.com/questions/9520911/java-sending-and-receiving-file-byte-over-sockets/
+ * Class that handles the protocol with the client
  */
-
-class ClientConversation(val socket: Socket): Runnable {
+class ClientConversation(val socket: DatagramSocket, val address: InetAddress, val port: Int): Runnable {
 
     // List of available files in /data file
     val files = File(filesPath).listFiles()
@@ -50,77 +49,109 @@ class ClientConversation(val socket: Socket): Runnable {
     // A String containing the sizes of the files
     val fileSizes = getAvailableFileSizes()
 
+    // Constant size of each of the packets to be sent
+    val bufferStandardSize = 548
+
+    // Used when trying to convert an byte array into a string
+    val charset = Charsets.UTF_8
+
     override fun run() {
-
-        val ips = socket.getInputStream()
-        val ops = socket.getOutputStream()
-
-        // Streams used to send the file
-        val bis = BufferedInputStream(ips)
-        val bos = BufferedOutputStream(ops)
-
-        // Streams used to send messages
-        val br = BufferedReader(InputStreamReader(ips))
-        val pw = PrintWriter(ops, true)
-
-        // Extract the requested file by the client (while valid)
-        var fileId = prepareToSend(br, pw)
-        while (fileId == -1){
-            fileId = prepareToSend(br, pw)
-        }
-        val file = files[fileId - 1]
-
-        // Sends the hash of the file for integrity check
-        sendHash(file, pw)
-
-        // Sends the file
-        val bisFile = BufferedInputStream(FileInputStream(file))
-        sendFile(file, bisFile, bos)
-
-        // Waits for confirmation from the client
-        val integriyCheck = br.readLine()
-        println("Integrity check: $integriyCheck")
-
-        // Closes the socket and streams
-        br.close()
-        pw.close()
-        bos.close()
-        bisFile.close()
-        socket.close()
+        val commStatus = communicateWithClient()
+        println(commStatus)
     }
 
-
-    private fun sendHash(file: File, pw: PrintWriter){
-        val fileBytes = file.readBytes()
-        val h = Hashing("MD5").hashInput(fileBytes)
-        pw.println("${Protocol.HASH.msg} $h")
+    /**
+     * Repeats the communication with the client until the file is successfully transfered
+     */
+    private fun communicateWithClient(): String{
+        val integrityCheck = executeProtocol()
+        if (integrityCheck == Protocol.ERR.msg) return communicateWithClient()
+        else return integrityCheck
     }
 
+    /**
+     * Performs the communication with the client that allows the server to send a file
+     */
+    private fun executeProtocol(): String{
+        // Ask the client for the file
+        val fileId = requestFileId()
+        val requestedFile = files[fileId]
+
+        // Send the hash of the file
+        sendHash(requestedFile)
+
+        // Send the number of packages to be sent
+        val numPacks: Long = (requestedFile.length() / bufferStandardSize) + 1
+        socket.send(packageMessage("NUM $numPacks"))
+
+        // Send the requested  file to the client
+        sendFile(requestedFile, numPacks)
+
+        // Waits for the client's confirmation regarding the integrity of the file
+        return unpackageMessage(ByteArray(bufferStandardSize)).toString(charset)
+    }
+
+    /**
+     * Repeats the process of sending the information of the files
+     * until the client request a valid file id
+     */
+    private fun requestFileId(): Int{
+        val fileId = prepareToSend()
+        if (fileId != -1) return fileId
+        else return requestFileId()
+    }
 
     /**
      * Starts the communication with the client regarding the sending of the file.
      * Returns the requested file or a message with an error
      */
-    private fun prepareToSend(br: BufferedReader, pw: PrintWriter): Int{
+    private fun prepareToSend(): Int{
 
-        // Notifies the client that the server is ready so sendFile a file
-        pw.println("${Protocol.READY.msg} $fileNames")
-        pw.println("${Protocol.SIZES.msg} $fileSizes")
+        // Send available files with the respective file sizes
+        socket.send(packageMessage("${Protocol.READY.msg} $fileNames"))
+        socket.send(packageMessage("${Protocol.SIZES.msg} $fileSizes"))
 
-        // Awaits for the file that the user wants to get
-        val ans = br.readLine().split(" ")
-        if (ans[0] != Protocol.SEND.msg){
-            pw.println(Protocol.ERR.msg)
+        // Awaits for the id of the file that the user wants to get
+        val requestedFile = unpackageMessage(ByteArray(bufferStandardSize)).toString(charset).split(" ")
+        val fileId = requestedFile[1].toInt()
+
+        if (requestedFile[0] != Protocol.SEND.msg || fileId < 0 || fileId >= files.size){
+            socket.send(packageMessage(Protocol.ERR.msg))
             return -1
         }else{
-            val fileId = ans[1].toInt()
-            if (fileId > 0 && fileId <= files.size){
-                return fileId
-            }else{
-                pw.println(Protocol.ERR.msg)
-                return -1
-            }
+            return fileId
         }
+    }
+
+    /**
+     * Packages a message string into a Datagram Package.
+     */
+    private fun packageMessage(msg: String): DatagramPacket{
+        val msgBytes = msg.toByteArray()
+        return DatagramPacket(msgBytes, msgBytes.size, address, port)
+    }
+
+    /**
+     * Packages a message in bytes into a Datagram Package.
+     */
+    private fun packageMessage(msg: ByteArray): DatagramPacket =
+            DatagramPacket(msg, msg.size, address, port)
+
+    /**
+     * Un-packages a message in the given buffer
+     */
+    private fun unpackageMessage(toReceive: ByteArray): ByteArray {
+        socket.receive(DatagramPacket(toReceive, toReceive.size))
+        return toReceive
+    }
+
+    /**
+     * Sends the hash of the file to the client
+     */
+    private fun sendHash(file: File){
+        val fileBytes = file.readBytes()
+        val h = Hashing("MD5").hashInput(fileBytes)
+        socket.send(packageMessage(h))
     }
 
 
@@ -141,43 +172,38 @@ class ClientConversation(val socket: Socket): Runnable {
         return fileSizes.fold(""){x: String, y: Long -> "$x;$y"}.drop(1)
     }
 
-
     /**
-     * Sends a file to the client via its Output Stream
+     * Sends a file to the client vie Datagram Packages
      */
-    private fun sendFile(file: File, bis: BufferedInputStream, bos: BufferedOutputStream){
+    private fun sendFile(file: File, numPacks: Long){
         println("The file selected by the client is: ${file.name}")
-        // Transform File contents into byte array
-        val fileLength = file.length()
-        var curr = 0.toLong()
+        val n = file.length()
+        // buffered stream to read the contents of the file
+        val bis = BufferedInputStream(FileInputStream(file))
+        var currPack = 0.toLong()
+        var bytesSentSoFar = 0.toLong()
         val before = System.currentTimeMillis()
-        var endOfFile = false
 
-        while (curr != fileLength){
-            var size = 10000
+        while (currPack <= numPacks){
+            var buff = bufferStandardSize
 
-            if (fileLength - curr >= size) curr += size
+            if (n - bytesSentSoFar >= buff) bytesSentSoFar += buff
             else{
-                size = (fileLength - curr).toInt()
-                curr = fileLength
-                endOfFile = true
+                buff = (n - bytesSentSoFar).toInt()
+                bytesSentSoFar = n
             }
 
-            val fileContent = ByteArray(size)
-            bis.read(fileContent, 0, size)
+            val fileContent = ByteArray(buff)
+            bis.read(fileContent, 0, buff)
 
-            val toSend = if (endOfFile){
-                byteArrayOf(1) + fileContent
-            }else{
-                byteArrayOf(0) + fileContent
-            }
-            bos.write(toSend)
-            println("Process ${(curr*100.0/fileLength)}% complete")
+            socket.send(packageMessage(fileContent))
+            currPack ++
+            println("Process ${(bytesSentSoFar*100.0/n)}% complete")
         }
 
         val after = System.currentTimeMillis()
-        bos.flush()
-
         println("Process finished successfully in ${after - before} ms")
+
+        bis.close()
     }
 }
