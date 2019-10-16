@@ -139,5 +139,5 @@ fun run(path: String, fileSelectorFun: () -> Int) {
 }
 
 fun main() {
-    run("./src/main/kotlin/Client/data") { 2 }
+    run("./src/main/kotlin/TCP/Client/data") { 2 }
 }
