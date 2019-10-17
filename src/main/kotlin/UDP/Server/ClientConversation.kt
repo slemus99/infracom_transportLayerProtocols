@@ -58,6 +58,7 @@ class ClientConversation(val socket: DatagramSocket, val address: InetAddress, v
     override fun run() {
         val commStatus = communicateWithClient()
         println(commStatus)
+        socket.close()
     }
 
     /**
