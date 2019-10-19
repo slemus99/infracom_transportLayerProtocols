@@ -1,0 +1,21 @@
+Date: Sun Sep 29 22:36:26 COT 2019
+Client accepted: Socket[addr=/127.0.0.1,port=36922,localport=3400]
+File requested: file_2.jpg
+File size: 38486 bytes
+Hash sent: 58CD3EA2E12CCDB7543BD60A14DDE5B0
+Transfer finished in 0 ms
+Operation terminated in: OK
+Date: Sun Sep 29 22:37:33 COT 2019
+Client accepted: Socket[addr=/127.0.0.1,port=36944,localport=3400]
+File requested: [Erai-raws] Dororo - 09 [720p][Multiple Subtitle].mkv
+File size: 264034485 bytes
+Hash sent: 2D7F89CE81A94E5A81142DF183C17347
+Transfer finished in 466 ms
+Operation terminated in: ERROR
+Date: Sun Sep 29 22:37:47 COT 2019
+Client accepted: Socket[addr=/127.0.0.1,port=36952,localport=3400]
+File requested: [Erai-raws] Dororo - 09 [720p][Multiple Subtitle].mkv
+File size: 264034485 bytes
+Hash sent: 2D7F89CE81A94E5A81142DF183C17347
+Transfer finished in 368 ms
+Operation terminated in: OK
