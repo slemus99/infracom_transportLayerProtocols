@@ -1,4 +1,4 @@
-package UServer
+package UDP.Server
 
 import java.io.*
 import java.net.*
@@ -38,7 +38,10 @@ data class Hashing(val algorithm: String){
 /**
  * Class that handles the protocol with the client
  */
-class ClientConversation(val socket: DatagramSocket, val address: InetAddress, val port: Int): Runnable {
+class ClientConversation(val address: InetAddress, val port: Int): Runnable {
+
+    // Socked from server instance
+    val socket = DatagramSocket()
 
     // List of available files in /data file
     val files = File(filesPath).listFiles()
@@ -56,15 +59,22 @@ class ClientConversation(val socket: DatagramSocket, val address: InetAddress, v
     val charset = Charsets.UTF_8
 
     override fun run() {
-        val commStatus = communicateWithClient()
-        println(commStatus)
-        socket.close()
+        try {
+            val commStatus = communicateWithClient()
+            println("Integriry Check: $commStatus")
+        }catch (e: Exception){
+            println("Child thread failed ${Thread.currentThread().id}")
+            e.printStackTrace()
+
+        }finally {
+            socket.close()
+        }
     }
 
     /**
      * Repeats the communication with the client until the file is successfully transfered
      */
-    private fun communicateWithClient(): String{
+    private tailrec fun communicateWithClient(): String{
         val integrityCheck = executeProtocol()
         if (integrityCheck == Protocol.ERR.msg) return communicateWithClient()
         else return integrityCheck
@@ -76,14 +86,20 @@ class ClientConversation(val socket: DatagramSocket, val address: InetAddress, v
     private fun executeProtocol(): String{
         // Ask the client for the file
         val fileId = requestFileId()
-        val requestedFile = files[fileId]
+        val requestedFile = files[fileId - 1]
+        println(fileId)
+
+        // Send the number of packages to be sent
+        val numPacks: Long = (requestedFile.length() / bufferStandardSize)
+        val numPacksPlusReminder = numPacks + when(requestedFile.length() % bufferStandardSize) {
+            0L -> 0L
+            else -> 1L
+        }
+
+        socket.send(packageMessage("NUM $numPacksPlusReminder"))
 
         // Send the hash of the file
         sendHash(requestedFile)
-
-        // Send the number of packages to be sent
-        val numPacks: Long = (requestedFile.length() / bufferStandardSize) + 1
-        socket.send(packageMessage("NUM $numPacks"))
 
         // Send the requested  file to the client
         sendFile(requestedFile, numPacks)
@@ -96,7 +112,7 @@ class ClientConversation(val socket: DatagramSocket, val address: InetAddress, v
      * Repeats the process of sending the information of the files
      * until the client request a valid file id
      */
-    private fun requestFileId(): Int{
+    private tailrec fun requestFileId(): Int{
         val fileId = prepareToSend()
         if (fileId != -1) return fileId
         else return requestFileId()
@@ -114,14 +130,38 @@ class ClientConversation(val socket: DatagramSocket, val address: InetAddress, v
 
         // Awaits for the id of the file that the user wants to get
         val requestedFile = unpackageMessage(ByteArray(bufferStandardSize)).toString(charset).split(" ")
-        val fileId = requestedFile[1].toInt()
 
-        if (requestedFile[0] != Protocol.SEND.msg || fileId < 0 || fileId >= files.size){
+        val fileId = requestedFile[1].toInt()
+        println(fileId)
+
+
+        if (requestedFile[0] != Protocol.SEND.msg || fileId < 1 || fileId > files.size){
+            println("error")
             socket.send(packageMessage(Protocol.ERR.msg))
             return -1
         }else{
+            println("No error")
             return fileId
         }
+    }
+
+    private fun cleanByteArray(bs: ByteArray): ByteArray{
+        var firstZero = 0
+        var found = false
+
+        while (firstZero < bs.size && !found){
+            if (bs[firstZero] == 0.toByte())
+                found = true
+            else
+                firstZero ++
+        }
+
+        val newByteArr = ByteArray(firstZero)
+
+        for (i in 0 until  firstZero)
+            newByteArr[i] = bs[i]
+
+        return newByteArr
     }
 
     /**
@@ -143,7 +183,7 @@ class ClientConversation(val socket: DatagramSocket, val address: InetAddress, v
      */
     private fun unpackageMessage(toReceive: ByteArray): ByteArray {
         socket.receive(DatagramPacket(toReceive, toReceive.size))
-        return toReceive
+        return cleanByteArray(toReceive)
     }
 
     /**
@@ -181,11 +221,12 @@ class ClientConversation(val socket: DatagramSocket, val address: InetAddress, v
         val n = file.length()
         // buffered stream to read the contents of the file
         val bis = BufferedInputStream(FileInputStream(file))
-        var currPack = 0.toLong()
-        var bytesSentSoFar = 0.toLong()
+        var currPack = 0L
+        var bytesSentSoFar = 0L
         val before = System.currentTimeMillis()
 
         while (currPack <= numPacks){
+
             var buff = bufferStandardSize
 
             if (n - bytesSentSoFar >= buff) bytesSentSoFar += buff
@@ -198,6 +239,11 @@ class ClientConversation(val socket: DatagramSocket, val address: InetAddress, v
             bis.read(fileContent, 0, buff)
 
             socket.send(packageMessage(fileContent))
+            val confirmation = unpackageMessage(ByteArray(bufferStandardSize)).toString(charset)
+            if (confirmation != Protocol.OK.msg){
+                throw java.lang.Exception("There was an error while transfering the package: $confirmation")
+            }
+
             currPack ++
             println("Process ${(bytesSentSoFar*100.0/n)}% complete")
         }

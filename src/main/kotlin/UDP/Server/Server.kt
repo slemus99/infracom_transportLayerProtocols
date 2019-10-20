@@ -1,6 +1,5 @@
 package UDP.Server
 
-import UServer.ClientConversation
 import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.util.concurrent.ExecutorService
@@ -16,10 +15,13 @@ class Server(val executorService: ExecutorService){
             // Blocking operation
             datagramSocket.receive(clientRequest)
 
-            // Destination port and address
+            // Destination mainPort and mainAddress
             val clientAddress = clientRequest.address
             val clientPort = clientRequest.port
-            executorService.submit(ClientConversation(datagramSocket, clientAddress, clientPort))
+
+            println("Client accepted with address: $clientAddress and port: $clientPort")
+
+            executorService.submit(ClientConversation(clientAddress, clientPort))
 
         }
     }
@@ -28,6 +30,7 @@ class Server(val executorService: ExecutorService){
 fun run(){
     val executorService = Executors.newFixedThreadPool(25)
     val server = Server(executorService)
+    server.run()
 }
 
 fun main() {

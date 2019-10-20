@@ -17,7 +17,7 @@ dependencies {
 }
 
 application {
-    mainClassName = "Runner"
+    mainClassName = "UDP.Runner"
 }
 
 val run by tasks.getting(JavaExec::class) {

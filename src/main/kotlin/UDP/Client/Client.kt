@@ -40,21 +40,23 @@ data class Hashing(val algorithm: String){
     }
 }
 
-data class Client(val socket: DatagramSocket, val address: InetAddress, val fileDestination: String, val fileSelectorFun: () -> Int){
+data class Client(val socket: DatagramSocket, val mainPort: Int, val mainAddress: InetAddress, val fileDestination: String, val fileSelectorFun: () -> Int){
 
     // Constant size of each of the packets to be sent
     val bufferStandardSize = 548
 
-    // Server port
-    val port = socket.port
-
     // Used when trying to convert an byte array into a string
     val charset = Charsets.UTF_8
+
+    lateinit var address: InetAddress
+
+    var port = -1
 
     /**
      * Executes the protocol and repeats it until the file has  been received successfully
      */
     fun execute(){
+        requestConnection()
         val commStatus = communicateWithServer()
         println(commStatus)
         socket.close()
@@ -67,15 +69,31 @@ data class Client(val socket: DatagramSocket, val address: InetAddress, val file
     }
 
     /**
+     * Sends an empty message to establish a connection with the server.
+     */
+    private fun requestConnection(){
+        socket.send(packageMessage(ByteArray(1){ x -> 1}, mainAddress, mainPort))
+    }
+
+    /**
      * Performs the protocol of communication with the server.
      * Returs ERR if the protocol failed or OK otherwise.
      */
     private fun requestFile(): String{
         println("Connected to Server: $socket")
 
+        // First message
         // Receive file names and sizes
-        val serverReadyMsg = unpackageMessage(ByteArray(bufferStandardSize)).toString(charset).split(" ")
-        val serverSizesMsg = unpackageMessage(ByteArray(bufferStandardSize)).toString(charset).split(" ")
+        val serverReadyBytes = ByteArray(bufferStandardSize)
+        val serverReadyPack = DatagramPacket(serverReadyBytes, bufferStandardSize)
+        socket.receive(serverReadyPack)
+        val serverReadyMsg = serverReadyBytes.toString(charset).split(" ")
+
+        // Initialize new dedicated channel for transfer
+        address = serverReadyPack.address
+        port = serverReadyPack.port
+
+        val serverSizesMsg = cleanByteArray(unpackageMessage(ByteArray(bufferStandardSize))).toString(charset).split(" ")
 
         if (serverReadyMsg[0] != Protocol.READY.msg || serverSizesMsg[0] != Protocol.SIZES.msg) return Protocol.ERR.msg
         else{
@@ -88,7 +106,9 @@ data class Client(val socket: DatagramSocket, val address: InetAddress, val file
             val fileId = fileSelectorFun()
             socket.send(packageMessage("${Protocol.SEND.msg} $fileId"))
 
-            val numPacksMsg = unpackageMessage(ByteArray(bufferStandardSize)).toString(charset).split(" ")
+            print("before numpacks")
+            val numPacksMsg = cleanByteArray(unpackageMessage(ByteArray(bufferStandardSize))).toString(charset).split(" ")
+            println(numPacksMsg)
 
             if (numPacksMsg[0] != Protocol.NUM.msg) return Protocol.ERR.msg
             else{
@@ -101,7 +121,7 @@ data class Client(val socket: DatagramSocket, val address: InetAddress, val file
                 val bos = BufferedOutputStream(FileOutputStream("$fileDestination/${fileNames[fileId - 1]}"))
 
                 // Receive hash
-                val receivedHash = unpackageMessage(ByteArray(bufferStandardSize)).toString(charset).split(" ")[0]
+                val receivedHash = cleanByteArray(unpackageMessage(ByteArray(bufferStandardSize))).toString(charset)
 
                 // Receive file
                 receiveFile(bos, numPacks, fileSize)
@@ -110,19 +130,41 @@ data class Client(val socket: DatagramSocket, val address: InetAddress, val file
                 // Integrity Check
                 val fileBytes = File("$fileDestination/${fileNames[fileId - 1]}").readBytes()
                 val calculatedHash = Hashing("MD5").hashInput(fileBytes)
+                val integrityCheck = if (receivedHash == calculatedHash)Protocol.OK.msg else Protocol.ERR.msg
+                socket.send(packageMessage(integrityCheck))
 
-                if (receivedHash == calculatedHash) return Protocol.OK.msg
-                else return Protocol.ERR.msg
+                return "Integrity Check: $integrityCheck"
             }
         }
     }
 
+    private fun cleanByteArray(bs: ByteArray): ByteArray{
+        var firstZero = 0
+        var found = false
+
+        while (firstZero < bs.size && !found){
+            if (bs[firstZero] == 0.toByte())
+                found = true
+            else
+                firstZero ++
+        }
+
+        val newByteArr = ByteArray(firstZero)
+
+        for (i in 0 until  firstZero)
+            newByteArr[i] = bs[i]
+
+        return newByteArr
+    }
+
+
     private fun receiveFile(bos: BufferedOutputStream, numPacks: Long, fileSize: Long){
-        var currPack = 0.toLong()
-        var receivedBytes = 0.toLong()
+        var currPack = 1L
+        var receivedBytes = 0L
         val before = System.currentTimeMillis()
 
         while (currPack <= numPacks){
+
             var buff = bufferStandardSize
             if (fileSize - receivedBytes >= buff) receivedBytes += buff
             else{
@@ -134,7 +176,9 @@ data class Client(val socket: DatagramSocket, val address: InetAddress, val file
 
             // Write file
             bos.write(content, 0, buff)
+            socket.send(packageMessage(Protocol.OK.msg))
 
+            currPack ++
             println("Process ${(receivedBytes*100.0/fileSize)}% complete")
 
         }
@@ -155,13 +199,16 @@ data class Client(val socket: DatagramSocket, val address: InetAddress, val file
      * Packages a message in bytes into a Datagram Package.
      */
     private fun packageMessage(msg: ByteArray): DatagramPacket =
-            DatagramPacket(msg, msg.size, address, port)
+        DatagramPacket(msg, msg.size, address, port)
+
+    private fun packageMessage(msg: ByteArray, address: InetAddress, port: Int) =
+        DatagramPacket(msg, msg.size, address, port)
 
     /**
      * Un-packages a message in the given buffer
      */
     private fun unpackageMessage(toReceive: ByteArray): ByteArray {
-        socket.receive(DatagramPacket(toReceive, toReceive.size))
+        socket.receive(DatagramPacket(toReceive, toReceive.size, address, port))
         return toReceive
     }
 
@@ -174,11 +221,11 @@ data class Client(val socket: DatagramSocket, val address: InetAddress, val file
 }
 
 fun run(fileDestination: String, fileSelectorFun: () -> Int) =
-        Client(DatagramSocket(4445), InetAddress.getLocalHost(), fileDestination, fileSelectorFun)
+        Client(DatagramSocket(), 4445, InetAddress.getLocalHost(), fileDestination, fileSelectorFun)
                 .execute()
 
 fun stdinSelection(): Int = BufferedReader(InputStreamReader(System.`in`)).readLine().toInt()
 
 fun main() {
-    run(filesPath){ stdinSelection()}
+    run(filesPath, ::stdinSelection)
 }

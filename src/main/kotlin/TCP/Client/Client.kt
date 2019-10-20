@@ -1,4 +1,4 @@
-package Client
+package TCP.Client
 
 import java.io.*
 import java.net.Socket

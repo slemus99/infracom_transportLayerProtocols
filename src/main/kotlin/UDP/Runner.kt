@@ -1,10 +1,10 @@
-package TCP
+package UDP
 
 import java.io.BufferedReader
 import java.io.InputStreamReader
 
-import TCP.Client.run as clientRun
-import TCP.Server.run as serverRun
+import UDP.Client.run as clientRun
+import UDP.Server.run as serverRun
 
 class Runner {
     companion object {

@@ -1,4 +1,4 @@
-package Server
+package TCP.Server
 
 import java.io.*
 import java.net.Socket
