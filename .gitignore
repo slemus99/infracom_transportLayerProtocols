@@ -6,6 +6,9 @@
 bin/
 out/
 
+src/main/kotlin/Client/data/
+src/main/kotlin/Server/data/
+
 
 .gradle
 /build/
@@ -21,6 +24,3 @@ gradle-app.setting
 
 # # Work around https://youtrack.jetbrains.com/issue/IDEA-116898
 # gradle/wrapper/gradle-wrapper.properties
-
-src/main/kotlin/UDP/Client/data/
-src/main/kotlin/UDP/Server/data/
