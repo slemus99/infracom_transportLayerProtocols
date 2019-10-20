@@ -1,5 +1,10 @@
+package TCP
+
 import java.io.BufferedReader
 import java.io.InputStreamReader
+
+import TCP.Client.run as clientRun
+import TCP.Server.run as serverRun
 
 class Runner {
     companion object {
@@ -9,13 +14,13 @@ class Runner {
             when(mode) {
                 "client" -> {
                     val destination = args[1]
-                    Client.run(destination, ::selectFileFromConsole)
+                    clientRun(destination, ::selectFileFromConsole)
                 }
-                "server" -> Server.run()
+                "server" -> serverRun()
                 "clientHeadless" -> {
                     val destination = args[1]
                     val fileToSelect = args[2].toInt()
-                    Client.run(destination){ fileToSelect }
+                    clientRun(destination){ fileToSelect }
                 }
             }
         }

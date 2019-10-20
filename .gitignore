@@ -5,6 +5,7 @@
 .project
 bin/
 out/
+
 src/main/kotlin/Client/data/
 src/main/kotlin/Server/data/
 

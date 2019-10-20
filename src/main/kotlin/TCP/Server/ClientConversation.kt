@@ -1,4 +1,4 @@
-package Server
+package TCP.Server
 
 import java.io.*
 import java.net.Socket
@@ -21,7 +21,7 @@ enum class Protocol(val msg: String){
     ERR("ERROR"),
     OK("OK")
 }
-val filesPath = "./src/main/kotlin/Server/data"
+val filesPath = "./src/main/kotlin/TCP/Server/data"
 /**
  * Based on an implementation of https://www.javacodemonk.com/calculating-md5-hash-in-java-kotlin-and-android-96ed9628
  */
